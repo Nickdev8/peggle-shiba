@@ -1,7 +1,7 @@
 extends Area2D
 
 @export var speed: float = 500.0
-@export var lifetime: float = 1.0  # seconds before despawn
+@export var lifetime: float = 3.0  # seconds before despawn
 var velocity: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
