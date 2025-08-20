@@ -14,11 +14,26 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Main" type="Node2D" parent="."]
+unique_name_in_owner = true
 
-[node name="catapult" type="Node2D" parent="Main" node_paths=PackedStringArray("sack")]
+[node name="catapult" type="Node2D" parent="Main" node_paths=PackedStringArray("cursor", "sack")]
 script = ExtResource("1_0xm2m")
-sack = NodePath("Icon")
+where_do_projectiles_spawn_in_scene = NodePath("..")
+cursor = NodePath("cursor")
+sack = NodePath("catapult")
 
-[node name="Icon" type="Sprite2D" parent="Main/catapult"]
+[node name="cursor" type="Sprite2D" parent="Main/catapult"]
+scale = Vector2(0.02, 0.02)
+texture = ExtResource("2_h2yge")
+
+[node name="cursor" type="Sprite2D" parent="Main/catapult/cursor"]
+scale = Vector2(10, 1)
+texture = ExtResource("2_h2yge")
+
+[node name="cursor2" type="Sprite2D" parent="Main/catapult/cursor"]
+scale = Vector2(1, 10)
+texture = ExtResource("2_h2yge")
+
+[node name="catapult" type="Sprite2D" parent="Main/catapult"]
 scale = Vector2(0.375, 0.375)
 texture = ExtResource("2_h2yge")
