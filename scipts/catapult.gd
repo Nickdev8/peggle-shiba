@@ -87,7 +87,7 @@ func _shoot_loaded() -> void:
 	if _loaded_projectile == null: 
 		_spawn_loaded_projectile()
 		return
-	var dir: Vector2 = sack.global_position.direction_to(global_position)
+	var dir: Vector2 = sack.global_position.direction_to(global_position+Vector2.UP)
 	var dis: float = sack.global_position.distance_to(global_position)
 	_loaded_projectile.shoot(dir, dis, sack.global_position)
 	_loaded_projectile = null
