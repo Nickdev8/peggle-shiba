@@ -1,5 +1,6 @@
-[gd_scene load_steps=11 format=3 uid="uid://bddpfofxu63oy"]
+[gd_scene load_steps=12 format=3 uid="uid://bddpfofxu63oy"]
 
+[ext_resource type="Script" uid="uid://bst0eyy3yymek" path="res://scipts/targetsspawner.gd" id="1_o6xl0"]
 [ext_resource type="Script" uid="uid://rilx0qy22a5f" path="res://scipts/catapult.gd" id="1_tbgi4"]
 [ext_resource type="Texture2D" uid="uid://cr28tfbvhd0sm" path="res://assets/pole.png" id="2_o6xl0"]
 [ext_resource type="Texture2D" uid="uid://bc530l6t6mdfo" path="res://assets/cursor.png" id="2_tefeu"]
@@ -54,6 +55,9 @@ shape = SubResource("WorldBoundaryShape2D_h2yge")
 [node name="CollisionShape2D3" type="CollisionShape2D" parent="Main/StaticBody2D"]
 shape = SubResource("WorldBoundaryShape2D_1bvp3")
 
+[node name="targets" type="Node2D" parent="Main"]
+script = ExtResource("1_o6xl0")
+
 [node name="cursor" type="Sprite2D" parent="Main"]
 z_index = 20
 position = Vector2(0, 45)
@@ -61,13 +65,12 @@ texture = ExtResource("2_tefeu")
 
 [node name="catapult" type="Node2D" parent="Main" node_paths=PackedStringArray("cursor", "sack", "pole_left", "pole_right")]
 z_index = 2
-position = Vector2(0, 55)
+position = Vector2(0, 45)
 script = ExtResource("1_tbgi4")
 cursor = NodePath("../cursor")
 sack = NodePath("sack")
 pole_left = NodePath("Poleleft")
 pole_right = NodePath("Poleright")
-leash_pixels = 16
 
 [node name="Poleleft" type="Sprite2D" parent="Main/catapult"]
 z_index = -1

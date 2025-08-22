@@ -6,14 +6,27 @@ extends RigidBody2D
 @export var max_pull_pixels: float = 32.0
 @export var curve_exponent: float = 1.35
 @export var gravity_px_s2: float = 720.0
-@export var lifetime: float = 3.0
 
 @onready var collision_shape_2d: CollisionShape2D = $CollisionShape2D
+var onscreen: VisibleOnScreenNotifier2D
 
-
+var _hitobjects: Array[Node] = []
 var _vw: float = 320.0
 
 func _ready() -> void:
+	onscreen = get_node_or_null("VisibleOnScreenNotifier2D") as VisibleOnScreenNotifier2D
+	if onscreen == null:
+		onscreen = VisibleOnScreenNotifier2D.new()
+		add_child(onscreen)
+
+	if not onscreen.screen_exited.is_connected(_on_screen_exited):
+		onscreen.screen_exited.connect(_on_screen_exited)
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+
+	contact_monitor = true
+	max_contacts_reported = 8
+
 	var vp := get_viewport()
 	if vp:
 		_vw = float(vp.get_visible_rect().size.x)
@@ -38,4 +51,16 @@ func shoot(direction: Vector2, distance: float, pos: Vector2) -> void:
 	freeze = false
 	sleeping = false
 
-	get_tree().create_timer(lifetime).timeout.connect(queue_free)
+func _on_body_entered(body: Node) -> void:
+	if body.is_in_group("destructible") and not _hitobjects.has(body):
+		_hitobjects.append(body)
+		var object_sprite: Sprite2D = body.get_child(0)
+		object_sprite.self_modulate.a = 0.5
+
+func _on_screen_exited() -> void:
+	for body in _hitobjects:
+		if is_instance_valid(body):
+			body.queue_free()
+	_hitobjects.clear()
+
+	queue_free()

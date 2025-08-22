@@ -27,6 +27,10 @@ window/stretch/aspect="keep_width"
 
 enabled=PackedStringArray("res://addons/godot_super-wakatime/plugin.cfg")
 
+[global_group]
+
+destructible=""
+
 [input]
 
 catapult-Left={
