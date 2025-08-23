@@ -1,24 +1,11 @@
-[gd_scene load_steps=12 format=3 uid="uid://bddpfofxu63oy"]
+[gd_scene load_steps=8 format=3 uid="uid://bddpfofxu63oy"]
 
 [ext_resource type="Script" uid="uid://bst0eyy3yymek" path="res://scipts/targetsspawner.gd" id="1_o6xl0"]
 [ext_resource type="Script" uid="uid://rilx0qy22a5f" path="res://scipts/catapult.gd" id="1_tbgi4"]
-[ext_resource type="Texture2D" uid="uid://cr28tfbvhd0sm" path="res://assets/pole.png" id="2_o6xl0"]
 [ext_resource type="Texture2D" uid="uid://bc530l6t6mdfo" path="res://assets/cursor.png" id="2_tefeu"]
-[ext_resource type="Texture2D" uid="uid://40ee426vntku" path="res://assets/sack.png" id="4_85g3d"]
 [ext_resource type="Script" uid="uid://cgthjwurvgk3b" path="res://scipts/enableonstart.gd" id="4_tipki"]
 [ext_resource type="Shader" uid="uid://cbarxola1rtw6" path="res://assets/main.gdshader" id="5_85g3d"]
-
-[sub_resource type="WorldBoundaryShape2D" id="WorldBoundaryShape2D_0xm2m"]
-normal = Vector2(1, 0)
-distance = -80.0
-
-[sub_resource type="WorldBoundaryShape2D" id="WorldBoundaryShape2D_h2yge"]
-normal = Vector2(0, 1)
-distance = -90.0
-
-[sub_resource type="WorldBoundaryShape2D" id="WorldBoundaryShape2D_1bvp3"]
-normal = Vector2(-1, 0)
-distance = -80.0
+[ext_resource type="Texture2D" uid="uid://djtf5mnftxobc" path="res://assets/newui.png" id="8_tipki"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_h2yge"]
 shader = ExtResource("5_85g3d")
@@ -31,63 +18,7 @@ shader_parameter/tex_scale = Vector2(1, 1)
 shader_parameter/tex_rotation_degrees = 0.0
 shader_parameter/pixel_quantize = 0.0
 
-[node name="Control" type="Control"]
-layout_mode = 3
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="Main" type="Node2D" parent="."]
-unique_name_in_owner = true
-
-[node name="StaticBody2D" type="StaticBody2D" parent="Main"]
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Main/StaticBody2D"]
-shape = SubResource("WorldBoundaryShape2D_0xm2m")
-
-[node name="CollisionShape2D2" type="CollisionShape2D" parent="Main/StaticBody2D"]
-shape = SubResource("WorldBoundaryShape2D_h2yge")
-
-[node name="CollisionShape2D3" type="CollisionShape2D" parent="Main/StaticBody2D"]
-shape = SubResource("WorldBoundaryShape2D_1bvp3")
-
-[node name="targets" type="Node2D" parent="Main"]
-script = ExtResource("1_o6xl0")
-
-[node name="cursor" type="Sprite2D" parent="Main"]
-z_index = 20
-position = Vector2(0, 45)
-texture = ExtResource("2_tefeu")
-
-[node name="catapult" type="Node2D" parent="Main" node_paths=PackedStringArray("cursor", "sack", "pole_left", "pole_right")]
-z_index = 2
-position = Vector2(0, 45)
-script = ExtResource("1_tbgi4")
-cursor = NodePath("../cursor")
-sack = NodePath("sack")
-pole_left = NodePath("Poleleft")
-pole_right = NodePath("Poleright")
-
-[node name="Poleleft" type="Sprite2D" parent="Main/catapult"]
-z_index = -1
-position = Vector2(-20, -1)
-texture = ExtResource("2_o6xl0")
-
-[node name="Poleright" type="Sprite2D" parent="Main/catapult"]
-z_index = -1
-position = Vector2(20, -1)
-texture = ExtResource("2_o6xl0")
-
-[node name="sack" type="Node2D" parent="Main/catapult"]
-
-[node name="sprite" type="Sprite2D" parent="Main/catapult/sack"]
-z_index = 1
-position = Vector2(0, 5)
-texture = ExtResource("4_85g3d")
+[node name="Main" type="Node2D"]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 layer = 100
@@ -101,3 +32,43 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+
+[node name="cursor" type="Sprite2D" parent="."]
+z_index = 20
+position = Vector2(0, 45)
+texture = ExtResource("2_tefeu")
+
+[node name="targets" type="Node2D" parent="."]
+script = ExtResource("1_o6xl0")
+
+[node name="catapult" type="Node2D" parent="." node_paths=PackedStringArray("cursor", "sack")]
+z_index = 2
+position = Vector2(0, 46)
+script = ExtResource("1_tbgi4")
+cursor = NodePath("../cursor")
+sack = NodePath("sack")
+leash_pixels = 40
+
+[node name="sack" type="Node2D" parent="catapult"]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+
+[node name="Control" type="Control" parent="."]
+z_index = -10
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TextureRect" type="TextureRect" parent="Control"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("8_tipki")
