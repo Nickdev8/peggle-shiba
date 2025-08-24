@@ -1,13 +1,19 @@
 extends Node2D
 
 @export var projectile_parent: Node = null
-@export var cursor: Node2D
-@export var sack: Node2D
-@export var pole_left: Node2D
-@export var pole_right: Node2D
+
+@onready var cursor: Sprite2D = %cursor
+@onready var sack: Node2D = $sack
+@onready var band_right: Node2D = $band_right
+
 @export var cross_screen_time: float = 1.33
 @export var leash_pixels: int = 32
 @export var follow_half_life: float = 0.08
+
+# NEW: precise power mapping across full screen
+@export var power_curve_gamma: float = 0.55      # <1 => more low-end precision
+@export var power_precision_boost: float = 0.5   # 0..1: blend in extra S-curve shaping
+@export var power_min_speed_frac: float = 0.015  # floor as % of v_max (tiny, but non-zero)
 
 # trajectory sim params
 @export var traj_points: int = 48
@@ -19,48 +25,86 @@ extends Node2D
 @export var band_bow: float = 0.18
 @export var band_width: float = 2.0
 
-# --- NEW: display styling ---
-const PREVIEW_LENGTH_PX := 70.0    # only show first ~50 px of current trajectory
-const DOT_SPACING_PX    := 3.0     # tight spacing between dots
-const DOT_R_START       := 2.5     # starting radius of dot near sling
-const DOT_R_END         := 0.6     # smallest radius at 50 px
-const LAST_TRAJ_ALPHA   := 0.45    # greyed out previous shot
+# trajectory/dots styling
+const PREVIEW_LENGTH_PX := 70.0
+const DOT_SPACING_PX    := 3.0
+const DOT_R_START       := 2.5
+const DOT_R_END         := 0.6
+const LAST_TRAJ_ALPHA   := 0.45
+
+const POST_SHOT_DRAW_SECS := 0.15
+
+@export var elastic_settle_time: float = 0.22
+@export var elastic_damping_ratio: float = 0.55
+@export var elastic_center_local: Vector2 = Vector2(0, 6)
+
+@export var touch_fire_on_release: bool = true
+@export var touch_min_pull_px: float = 12.0
+@export var enable_haptics_on_shot: bool = false
+@export var touch_release_idle_grace: float = 0.08
 
 var ProjectileScene := preload("res://scenes/newprojectile.tscn")
 var _reloading: bool = false
 
-var cursor_speed: float = 240.0
+var cursor_speed: float = 120.0
 var max_distance: float = 16.0
 var cursor_position: Vector2
 var _last_mouse_pos: Vector2
 var _mouse_active_time: float = 0.0
 const MOUSE_IDLE_GRACE := 0.25
 
+# NEW: cached screen-half used for power normalization (center → screen edge)
+var _screen_drag_max: float = 80.0
+
 var _loaded_projectile: Node2D = null
 
-# --- NEW: keep multiple forms of trajectory data ---
-var _traj_full: PackedVector2Array = PackedVector2Array()     # full sim for current aim
-var _traj_short: PackedVector2Array = PackedVector2Array()    # first 50px resampled for dots
-var _last_shot_full: PackedVector2Array = PackedVector2Array()# full sim from previous shot
+var _traj_full: PackedVector2Array = PackedVector2Array()
+var _traj_short: PackedVector2Array = PackedVector2Array()
+var _last_shot_full: PackedVector2Array = PackedVector2Array()
+
+var _follow_draw_time: float = 0.0
+var _follow_draw_proj: Node2D = null
+var _follow_draw_anchor_local: Vector2 = Vector2.ZERO
+
+var _draw_anchor_local: Vector2 = Vector2.ZERO
+var _draw_anchor_vel: Vector2 = Vector2.ZERO
+var _spring_started: bool = false
+
+var _touch_active: bool = false
+var _touch_id: int = -1
+var _touch_pos: Vector2 = Vector2.ZERO
+var _touch_events_seen_this_frame: bool = false
+var _touch_idle_timer: float = 0.0
+var _mouse_hold: bool = false
 
 func _ready() -> void:
 	var vr := get_viewport().get_visible_rect()
-	var vw := float(vr.size.x)
-	cursor_speed = vw / maxf(0.05, cross_screen_time)
+	var center := vr.size * 0
+
+	cursor_position = center
+	cursor.global_position = center
+	_last_mouse_pos = center
+
+	# unchanged: keyboard cursor crossing time
+	#cursor_speed = vr.size.x / maxf(0.05, cross_screen_time)
 	max_distance = float(leash_pixels)
 
-	# If sack isn't set yet, fall back safely
-	cursor_position = sack.global_position if (sack and sack.is_inside_tree()) else global_position
-	_last_mouse_pos = get_global_mouse_position()
-	
+	# NEW: power normalization uses the centered screen radius (center → edge),
+	# so it works perfectly for 320×180 or any viewport size.
+	var half := Vector2(float(vr.size.x), float(vr.size.y)) * 0.5
+	_screen_drag_max = min(half.x, half.y)  # use the limiting axis (circle inside the screen)
+
 	call_deferred("_spawn_loaded_projectile")
 
+	_draw_anchor_local = to_local(sack.global_position)
 	_rebuild_trajectory()
 	queue_redraw()
 
 
 func _physics_process(delta: float) -> void:
-	# --- keyboard control ---
+	_touch_events_seen_this_frame = false
+
+	# --- keyboard (unchanged) ---
 	var axis := Input.get_vector("catapult-Left", "catapult-Right", "catapult-Up", "catapult-Down")
 	if axis.length() > 1.0:
 		axis = axis.normalized()
@@ -70,24 +114,27 @@ func _physics_process(delta: float) -> void:
 		cursor.global_position = cursor_position
 		_mouse_active_time = 0.0
 
-	# --- mouse control with brief grace ---
-	var mouse_pos: Vector2 = get_global_mouse_position()
-	if mouse_pos != _last_mouse_pos:
-		_mouse_active_time = MOUSE_IDLE_GRACE
-		_last_mouse_pos = mouse_pos
-		cursor.global_position = mouse_pos
-	if _mouse_active_time > 0.0:
-		cursor_position = _clamp_to_centered_view(mouse_pos)
-		_mouse_active_time -= delta
+	# --- unified pointer (unchanged behavior) ---
+	var used_pointer := false
+	if _touch_active:
+		cursor.global_position = _touch_pos
+		cursor_position = _clamp_to_centered_view(_touch_pos)
+		used_pointer = true
+	else:
+		if _mouse_hold:
+			var mouse_pos: Vector2 = get_global_mouse_position()
+			cursor.global_position = mouse_pos
+			cursor_position = _clamp_to_centered_view(mouse_pos)
+			used_pointer = true
 
-	# --- mirrored target (opposite side of base) ---
+	# mirrored target & sack leash (unchanged visuals/feel)
 	var to_cursor: Vector2 = cursor_position - global_position
 	var target_vec: Vector2 = -to_cursor
 	var target_len: float = minf(target_vec.length(), max_distance)
 	var target_dir: Vector2 = target_vec.normalized() if (target_vec.length_squared() > 1e-6) else Vector2.RIGHT
 	var target: Vector2 = global_position + target_dir * target_len
 
-	# --- RADIAL FOLLOW: smooth only the radius, snap the angle ---
+	# radial follow (unchanged)
 	var curr_vec: Vector2 = sack.global_position - global_position
 	var curr_len: float = curr_vec.length()
 	var t: float = 1.0 - exp(-0.69314718056 * delta / maxf(0.0001, follow_half_life))
@@ -95,43 +142,116 @@ func _physics_process(delta: float) -> void:
 	var new_pos: Vector2 = global_position + target_dir * new_len
 	sack.global_position = _pixel_snap(new_pos)
 
-	# keep round glued
 	if _loaded_projectile:
 		_loaded_projectile.global_position = sack.global_position
 	else:
 		if not _reloading:
 			_spawn_loaded_projectile()
 
-	# update predicted trajectory & redraw
 	_rebuild_trajectory()
+
+	if _follow_draw_time > 0.0:
+		_follow_draw_time = maxf(0.0, _follow_draw_time - delta)
+
+	_update_elastic_anchor(delta)
+
+	# touch release fallback (unchanged)
+	if _touch_active:
+		if _touch_events_seen_this_frame:
+			_touch_idle_timer = 0.0
+		else:
+			_touch_idle_timer += delta
+			if _touch_idle_timer >= touch_release_idle_grace:
+				if touch_fire_on_release:
+					var pull_len := (cursor_position - global_position).length()
+					if pull_len >= touch_min_pull_px:
+						_shoot_loaded()
+				_touch_active = false
+				_touch_id = -1
+				_touch_idle_timer = 0.0
+
 	queue_redraw()
 
+
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("shoot"):
-		_shoot_loaded()
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_mouse_hold = event.pressed
+			if _mouse_hold:
+				var mouse_pos := get_global_mouse_position()
+				cursor.global_position = mouse_pos
+				cursor_position = _clamp_to_centered_view(mouse_pos)
+			return
+
+	# touch begin
+	if event is InputEventScreenTouch and event.pressed:
+		_touch_events_seen_this_frame = true
+		if not _touch_active:
+			_touch_active = true
+			_touch_id = event.index
+			_touch_pos = event.position
+			cursor.global_position = event.position
+			cursor_position = _clamp_to_centered_view(event.position)
+		return
+
+	# touch end
+	if event is InputEventScreenTouch and not event.pressed:
+		_touch_events_seen_this_frame = true
+		if _touch_active and event.index == _touch_id:
+			if touch_fire_on_release:
+				var pull_len := (cursor_position - global_position).length()
+				if pull_len >= touch_min_pull_px:
+					_shoot_loaded()
+			_touch_active = false
+			_touch_id = -1
+			_touch_idle_timer = 0.0
+		return
+
+	# touch drag
+	if event is InputEventScreenDrag:
+		_touch_events_seen_this_frame = true
+		if _touch_active and event.index == _touch_id:
+			_touch_pos = event.position
+		return
+
 
 # ---- shoot & velocity helpers ----
 
 func _distance_factor() -> float:
-	var dist: float = (cursor_position - global_position).length()
-	var max_drag: float = max_distance * 3.0
-	return clampf(dist / max_drag, 0.0, 1.0)
+	var dist: float = (_clamp_to_centered_view(cursor_position) - global_position).length()
+	var vr := get_viewport().get_visible_rect()
+	var half := Vector2(float(vr.size.x), float(vr.size.y)) * 0.5
+	var max_drag: float = maxf(1.0, min(half.x, half.y))
+
+	var f := clampf(dist / max_drag, 0.0, 1.0)
+
+	# 1) gamma (more resolution at small pulls)
+	var f_gamma := pow(f, clampf(power_curve_gamma, 0.05, 3.0))
+	# 2) S-curve (smoothstep) to further open the low end
+	var f_s := f_gamma * f_gamma * (3.0 - 2.0 * f_gamma)
+	# 3) blend to taste
+	return lerpf(f_gamma, f_s, clampf(power_precision_boost, 0.0, 1.0))
+
 
 func _launch_velocity() -> Vector2:
 	var p := _get_proj_params()
 	var width: float = (p["bounds"] as Rect2).size.x
-	var v_min: float = width / maxf(0.05, float(p["min_ct"]))
-	var v_max: float = width / maxf(0.05, float(p["max_ct"]))
-	var factor: float = _distance_factor()
-	var bias: float = 0.75
-	factor = pow(factor, bias)
-	var speed: float = lerpf(v_min, v_max, factor)
 
+	# NOTE: keep the same top-end speed as before
+	var v_max: float = width / maxf(0.05, float(p["max_ct"]))
+
+	# NEW: map power from ~0 up to v_max with a tiny floor for feedback
+	var factor: float = _distance_factor()
+	var min_floor := clampf(power_min_speed_frac, 0.0, 0.25) * v_max
+	var speed: float = max(min_floor, v_max * factor)
+
+	# direction unchanged
 	var aim_at: Vector2 = _clamp_to_centered_view(cursor_position)
 	var dir: Vector2 = sack.global_position.direction_to(aim_at)
 	if dir.length_squared() < 1e-6:
 		dir = Vector2(0, -1)
 	return dir * speed
+
 
 func _shoot_loaded() -> void:
 	if _loaded_projectile == null:
@@ -144,6 +264,20 @@ func _shoot_loaded() -> void:
 	var proj := _loaded_projectile
 	_loaded_projectile = null
 	_reloading = true
+
+	_follow_draw_time = POST_SHOT_DRAW_SECS
+	_follow_draw_proj = proj
+	_follow_draw_anchor_local = to_local(sack.global_position)
+
+	_draw_anchor_local = _follow_draw_anchor_local
+	_draw_anchor_vel = Vector2.ZERO
+	_spring_started = false
+
+	if enable_haptics_on_shot and OS.has_feature("mobile"):
+		if Engine.has_singleton("GodotHapticFeedback"):
+			var h := Engine.get_singleton("GodotHapticFeedback")
+			if h and h.has_method("vibrate"):
+				h.vibrate(30)
 
 	if proj.has_method("set_loaded"):
 		proj.call("set_loaded", false)
@@ -159,7 +293,11 @@ func _on_projectile_gone() -> void:
 	_reloading = false
 	_spawn_loaded_projectile()
 	_rebuild_trajectory()
+	_draw_anchor_local = to_local(sack.global_position)
+	_draw_anchor_vel = Vector2.ZERO
+	_spring_started = false
 	queue_redraw()
+
 
 func _get_proj_params() -> Dictionary:
 	var g: float = 800.0
@@ -186,7 +324,7 @@ func _get_proj_params() -> Dictionary:
 		"bounds": bounds
 	}
 
-# ---- trajectory preview (same math the projectile will use) ----
+# ---- trajectory preview (unchanged) ----
 
 func _rebuild_trajectory() -> void:
 	var p := _get_proj_params()
@@ -201,7 +339,6 @@ func _rebuild_trajectory() -> void:
 	)
 	var v0: Vector2 = _launch_velocity()
 
-	# build full trajectory in local space
 	_traj_full.resize(0)
 	var t_acc: float = 0.0
 	var steps: int = int(minf(float(traj_points), ceilf(traj_max_time / traj_step)))
@@ -212,34 +349,73 @@ func _rebuild_trajectory() -> void:
 			break
 		t_acc += traj_step
 
-	# --- NEW: create short, ~50px arc-length sample with tight spacing
 	_traj_short = _arc_resample(_traj_full, PREVIEW_LENGTH_PX, DOT_SPACING_PX)
 
-# ---- drawing ----
+# ---- drawing & helpers (unchanged) ----
 
 func _draw() -> void:
-	# bands
-	var ls: Vector2 = to_local(sack.global_position)
-	draw_line(Vector2(-24,10),  ls + Vector2(-4, 7), Color.from_rgba8(233,156,91), 3)
-	draw_line(Vector2(24,10), ls + Vector2( 4, 7), Color.from_rgba8(233,156,91), 3)
+	var right_anchor: Vector2 = to_local(band_right.global_position)
+	var left_anchor: Vector2 = right_anchor
+	left_anchor.x *= -1
 
-	# --- NEW: draw last shot full trajectory greyed out (dotted)
+	var sack_pt: Vector2
+	if _follow_draw_time > 0.0 and _valid_follow_proj():
+		sack_pt = to_local(_follow_draw_proj.global_position)
+	elif _reloading:
+		sack_pt = _draw_anchor_local
+	else:
+		sack_pt = to_local(sack.global_position)
+
+	draw_line(left_anchor,  sack_pt + Vector2(0, 5), Color.from_rgba8(233,156,91), 3)
+	draw_line(right_anchor, sack_pt + Vector2(0, 5), Color.from_rgba8(233,156,91), 3)
+
 	if _last_shot_full.size() >= 2:
 		_draw_dots(_last_shot_full, DOT_SPACING_PX, DOT_R_START * 0.9, DOT_R_START * 0.9, Color(0.65, 0.65, 0.65, LAST_TRAJ_ALPHA))
 
-	# --- NEW: draw only first ~50px of current aim as shrinking white dots
-	if _traj_short.size() >= 1:
-		# sizes fade from DOT_R_START to DOT_R_END over the preview length
+	if _traj_short.size() >= 1 and not _reloading:
 		var count := _traj_short.size()
 		for i in count:
 			var t := 0.0 if (count <= 1) else float(i) / float(count - 1)
 			var r := lerpf(DOT_R_START, DOT_R_END, t)
 			draw_circle(_traj_short[i], r, Color(1, 1, 1, 1.0))
 
-# ---- NEW: helpers ----
+func _update_elastic_anchor(delta: float) -> void:
+	if _follow_draw_time > 0.0 and _valid_follow_proj():
+		_draw_anchor_local = to_local(_follow_draw_proj.global_position)
+		_draw_anchor_vel = Vector2.ZERO
+		_spring_started = false
+		return
 
-# Resamples 'points' along arc length, returning equally spaced points
-# up to 'length_limit_px' (or fewer if path ends), spaced by 'spacing_px'.
+	if not _reloading:
+		_draw_anchor_local = to_local(sack.global_position)
+		_draw_anchor_vel = Vector2.ZERO
+		_spring_started = false
+		return
+
+	if not _spring_started:
+		_draw_anchor_vel = Vector2.ZERO
+		_spring_started = true
+
+	var zeta := clampf(elastic_damping_ratio, 0.0, 2.0)
+	var settle := maxf(0.05, elastic_settle_time)
+	var omega_n := (4.0 / maxf(0.05, zeta * settle)) if zeta > 0.001 else 30.0
+	var k := omega_n * omega_n
+	var c := 2.0 * zeta * omega_n
+
+	var x := _draw_anchor_local
+	var v := _draw_anchor_vel
+	var target := elastic_center_local
+
+	var a := -(k * (x - target)) - (c * v)
+	v += a * delta
+	x += v * delta
+
+	_draw_anchor_local = x
+	_draw_anchor_vel = v
+
+func _valid_follow_proj() -> bool:
+	return _follow_draw_proj and is_instance_valid(_follow_draw_proj) and _follow_draw_proj.is_inside_tree()
+
 func _arc_resample(points: PackedVector2Array, length_limit_px: float, spacing_px: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if points.size() == 0:
@@ -249,7 +425,7 @@ func _arc_resample(points: PackedVector2Array, length_limit_px: float, spacing_p
 	var seg_acc := 0.0
 	var i := 0
 	var prev := points[0]
-	out.append(prev) # always start with first point
+	out.append(prev)
 
 	while i < points.size() - 1 and acc_len < length_limit_px:
 		var a := prev
@@ -260,7 +436,6 @@ func _arc_resample(points: PackedVector2Array, length_limit_px: float, spacing_p
 			prev = b
 			continue
 
-		# advance along the segment by remaining spacing
 		var remaining := spacing_px - seg_acc
 		if remaining <= seg_len:
 			var t := remaining / seg_len
@@ -269,9 +444,7 @@ func _arc_resample(points: PackedVector2Array, length_limit_px: float, spacing_p
 			prev = p
 			seg_acc = 0.0
 			acc_len += remaining
-			# stay on same segment (a..b), with new 'a' = p
-			# emulate by not incrementing i, but shifting 'a'
-			points[i] = prev  # temporary in-place walk
+			points[i] = prev
 		else:
 			seg_acc += seg_len
 			acc_len += seg_len
@@ -280,15 +453,12 @@ func _arc_resample(points: PackedVector2Array, length_limit_px: float, spacing_p
 
 		if acc_len + 0.0001 >= length_limit_px:
 			break
-
 	return out
 
-# draws small dots along an existing polyline using arc-length spacing
 func _draw_dots(poly: PackedVector2Array, spacing_px: float, r_start: float, r_end: float, col: Color) -> void:
 	if poly.size() == 0:
 		return
-	# build an arc-length sampled list
-	var dots := _arc_resample(poly, 1e9, spacing_px) # effectively no limit
+	var dots := _arc_resample(poly, 1e9, spacing_px)
 	var n := dots.size()
 	if n == 0:
 		return
@@ -296,8 +466,6 @@ func _draw_dots(poly: PackedVector2Array, spacing_px: float, r_start: float, r_e
 		var t := 0.0 if (n <= 1) else float(i) / float(n - 1)
 		var r := lerpf(r_start, r_end, t)
 		draw_circle(dots[i], r, col)
-
-# ---- misc utils ----
 
 func _pixel_snap(v: Vector2) -> Vector2:
 	return Vector2(round(v.x), round(v.y))
@@ -310,20 +478,14 @@ func _clamp_to_centered_view(p: Vector2) -> Vector2:
 		return p.clamp(-half + Vector2.ONE, half - Vector2.ONE)
 	return Vector2.ZERO
 
-
 func _spawn_loaded_projectile() -> void:
 	if _loaded_projectile or _reloading:
 		return
 
 	var proj := ProjectileScene.instantiate()
 	var parent := projectile_parent if projectile_parent != null else get_parent()
-
-	# If you prefer extra safety, you can also do:
-	# parent.call_deferred("add_child", proj)
-	# but since we called this via call_deferred from _ready, a normal add_child is fine.
 	parent.add_child(proj)
 
-	# Safe spawn position even if sack is missing/not ready
 	var spawn_pos := sack.global_position if (sack and sack.is_inside_tree()) else global_position
 	proj.global_position = spawn_pos
 
@@ -333,3 +495,6 @@ func _spawn_loaded_projectile() -> void:
 	proj.show()
 
 	_loaded_projectile = proj
+
+func _on_button_pressed() -> void:
+	_shoot_loaded()

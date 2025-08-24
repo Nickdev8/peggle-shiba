@@ -1,10 +1,12 @@
-[gd_scene load_steps=8 format=3 uid="uid://bddpfofxu63oy"]
+[gd_scene load_steps=12 format=3 uid="uid://bddpfofxu63oy"]
 
 [ext_resource type="Script" uid="uid://bst0eyy3yymek" path="res://scipts/targetsspawner.gd" id="1_o6xl0"]
 [ext_resource type="Script" uid="uid://rilx0qy22a5f" path="res://scipts/catapult.gd" id="1_tbgi4"]
 [ext_resource type="Texture2D" uid="uid://bc530l6t6mdfo" path="res://assets/cursor.png" id="2_tefeu"]
 [ext_resource type="Script" uid="uid://cgthjwurvgk3b" path="res://scipts/enableonstart.gd" id="4_tipki"]
 [ext_resource type="Shader" uid="uid://cbarxola1rtw6" path="res://assets/main.gdshader" id="5_85g3d"]
+[ext_resource type="Texture2D" uid="uid://dspc7fncechrf" path="res://assets/button.png" id="7_o6xl0"]
+[ext_resource type="Script" uid="uid://b8uamxcn177k5" path="res://scenes/button.gd" id="8_85g3d"]
 [ext_resource type="Texture2D" uid="uid://djtf5mnftxobc" path="res://assets/newui.png" id="8_tipki"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_h2yge"]
@@ -17,6 +19,14 @@ shader_parameter/tex_offset = Vector2(0, 0)
 shader_parameter/tex_scale = Vector2(1, 1)
 shader_parameter/tex_rotation_degrees = 0.0
 shader_parameter/pixel_quantize = 0.0
+
+[sub_resource type="InputEventKey" id="InputEventKey_tipki"]
+device = -1
+keycode = 32
+unicode = 32
+
+[sub_resource type="Shortcut" id="Shortcut_85g3d"]
+events = [SubResource("InputEventKey_tipki")]
 
 [node name="Main" type="Node2D"]
 
@@ -36,6 +46,7 @@ size_flags_horizontal = 4
 size_flags_vertical = 4
 
 [node name="cursor" type="Sprite2D" parent="."]
+unique_name_in_owner = true
 z_index = 20
 position = Vector2(0, 45)
 texture = ExtResource("2_tefeu")
@@ -43,15 +54,17 @@ texture = ExtResource("2_tefeu")
 [node name="targets" type="Node2D" parent="."]
 script = ExtResource("1_o6xl0")
 
-[node name="catapult" type="Node2D" parent="." node_paths=PackedStringArray("cursor", "sack")]
+[node name="catapult" type="Node2D" parent="."]
+unique_name_in_owner = true
 z_index = 2
 position = Vector2(0, 46)
 script = ExtResource("1_tbgi4")
-cursor = NodePath("../cursor")
-sack = NodePath("sack")
 leash_pixels = 40
 
 [node name="sack" type="Node2D" parent="catapult"]
+
+[node name="band_right" type="Node2D" parent="catapult"]
+position = Vector2(24, 10)
 
 [node name="Camera2D" type="Camera2D" parent="."]
 
@@ -72,3 +85,27 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("8_tipki")
+
+[node name="Button" type="Button" parent="Control"]
+z_index = 25
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 88.0
+offset_top = 49.0
+offset_right = 122.0
+offset_bottom = 70.0
+grow_horizontal = 0
+grow_vertical = 0
+shortcut = SubResource("Shortcut_85g3d")
+icon = ExtResource("7_o6xl0")
+icon_alignment = 1
+script = ExtResource("8_85g3d")
+
+[connection signal="button_up" from="Control/Button" to="Control/Button" method="_on_button_up"]
+[connection signal="pressed" from="Control/Button" to="catapult" method="_on_button_pressed"]
+[connection signal="pressed" from="Control/Button" to="Control/Button" method="_on_pressed"]
+[connection signal="toggled" from="Control/Button" to="Control/Button" method="_on_toggled"]
