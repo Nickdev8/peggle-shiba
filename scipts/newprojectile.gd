@@ -1,5 +1,7 @@
 extends Node2D
 
+@onready var sprite: Sprite2D = $Sprite2D
+
 @export var radius: float = 6.0
 
 # Global forces / stepping
@@ -37,11 +39,16 @@ func _ready() -> void:
 		var size: Vector2i = vp.get_visible_rect().size
 		bounds = Rect2(-float(size.x) * 0.5, -float(size.y) * 0.5, float(size.x), float(size.y))
 
+func _process(delta: float) -> void:
+	sprite.update_shoot(vel)
+
+
 func set_loaded(loaded: bool) -> void:
 	_is_loaded = loaded
 	set_physics_process(not loaded)
 
 func shoot(origin: Vector2, direction: Vector2, ease: float) -> void:
+	sprite.render_shoot()
 	if bounds.size == Vector2.ZERO:
 		bounds = Rect2(-90.0, -160.0, 180.0, 320.0)
 

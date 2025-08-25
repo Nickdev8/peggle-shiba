@@ -1,13 +1,16 @@
-[gd_scene load_steps=3 format=3 uid="uid://bp30no6no6i45"]
+[gd_scene load_steps=4 format=3 uid="uid://bp30no6no6i45"]
 
 [ext_resource type="Script" uid="uid://dii0arrq0kpiq" path="res://scipts/newprojectile.gd" id="1_5o63n"]
-[ext_resource type="Texture2D" uid="uid://svt7xcdpioav" path="res://assets/organizers/face1.png" id="2_5o63n"]
+[ext_resource type="Texture2D" uid="uid://d2k33y5rggu1a" path="res://assets/organizers/paolo.png" id="2_5o63n"]
+[ext_resource type="Script" uid="uid://s05vugk20wid" path="res://scenes/randomprojectile.gd" id="3_wtkh0"]
 
 [node name="Projectile" type="Node2D"]
 z_index = 2
 script = ExtResource("1_5o63n")
-radius = 8.0
+radius = 17.0
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
 z_index = 1
+scale = Vector2(0.04, 0.04)
 texture = ExtResource("2_5o63n")
+script = ExtResource("3_wtkh0")

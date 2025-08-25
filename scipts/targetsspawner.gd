@@ -12,7 +12,7 @@ var levels: Array[String] = [
 	"      e                     ",
 	"        e                   ",
 	"          e                 ",
-	"                            ",
+	"                     xxxx   ",
 ]
 
 

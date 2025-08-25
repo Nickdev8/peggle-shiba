@@ -26,7 +26,7 @@ extends Node2D
 @export var band_width: float = 2.0
 
 # trajectory/dots styling
-const PREVIEW_LENGTH_PX := 70.0
+const PREVIEW_LENGTH_PX := 100.0
 const DOT_SPACING_PX    := 3.0
 const DOT_R_START       := 2.5
 const DOT_R_END         := 0.6
@@ -53,7 +53,6 @@ var _last_mouse_pos: Vector2
 var _mouse_active_time: float = 0.0
 const MOUSE_IDLE_GRACE := 0.25
 
-# NEW: cached screen-half used for power normalization (center → screen edge)
 var _screen_drag_max: float = 80.0
 
 var _loaded_projectile: Node2D = null
@@ -86,7 +85,6 @@ func _ready() -> void:
 	_last_mouse_pos = center
 
 	# unchanged: keyboard cursor crossing time
-	#cursor_speed = vr.size.x / maxf(0.05, cross_screen_time)
 	max_distance = float(leash_pixels)
 
 	# NEW: power normalization uses the centered screen radius (center → edge),
@@ -106,10 +104,14 @@ func _physics_process(delta: float) -> void:
 
 	# --- keyboard (unchanged) ---
 	var axis := Input.get_vector("catapult-Left", "catapult-Right", "catapult-Up", "catapult-Down")
+	var speed := cursor_speed
+	if Input.is_key_pressed(KEY_SHIFT):
+		speed *= 0.3
+	
 	if axis.length() > 1.0:
 		axis = axis.normalized()
 	if axis != Vector2.ZERO:
-		cursor_position += axis * cursor_speed * delta
+		cursor_position += axis * speed * delta
 		cursor_position = _clamp_to_centered_view(cursor_position)
 		cursor.global_position = cursor_position
 		_mouse_active_time = 0.0
@@ -144,6 +146,7 @@ func _physics_process(delta: float) -> void:
 
 	if _loaded_projectile:
 		_loaded_projectile.global_position = sack.global_position
+		_loaded_projectile.rotation = _aim_angle()   # <— rotate during aim
 	else:
 		if not _reloading:
 			_spawn_loaded_projectile()
@@ -236,21 +239,15 @@ func _distance_factor() -> float:
 func _launch_velocity() -> Vector2:
 	var p := _get_proj_params()
 	var width: float = (p["bounds"] as Rect2).size.x
-
-	# NOTE: keep the same top-end speed as before
 	var v_max: float = width / maxf(0.05, float(p["max_ct"]))
 
-	# NEW: map power from ~0 up to v_max with a tiny floor for feedback
 	var factor: float = _distance_factor()
 	var min_floor := clampf(power_min_speed_frac, 0.0, 0.25) * v_max
 	var speed: float = max(min_floor, v_max * factor)
 
-	# direction unchanged
-	var aim_at: Vector2 = _clamp_to_centered_view(cursor_position)
-	var dir: Vector2 = sack.global_position.direction_to(aim_at)
-	if dir.length_squared() < 1e-6:
-		dir = Vector2(0, -1)
+	var dir: Vector2 = _aim_dir()
 	return dir * speed
+
 
 
 func _shoot_loaded() -> void:
@@ -265,6 +262,8 @@ func _shoot_loaded() -> void:
 	_loaded_projectile = null
 	_reloading = true
 
+	proj.rotation = _aim_angle()
+	
 	_follow_draw_time = POST_SHOT_DRAW_SECS
 	_follow_draw_proj = proj
 	_follow_draw_anchor_local = to_local(sack.global_position)
@@ -352,6 +351,14 @@ func _rebuild_trajectory() -> void:
 	_traj_short = _arc_resample(_traj_full, PREVIEW_LENGTH_PX, DOT_SPACING_PX)
 
 # ---- drawing & helpers (unchanged) ----
+# --- helper: aim direction & angle ---
+func _aim_dir() -> Vector2:
+	var aim_at: Vector2 = _clamp_to_centered_view(cursor_position)
+	var d: Vector2 = sack.global_position.direction_to(aim_at)
+	return Vector2(0, -1) if d.length_squared() < 1e-6 else d
+	
+func _aim_angle() -> float:
+	return _aim_dir().angle() + PI / 2
 
 func _draw() -> void:
 	var right_anchor: Vector2 = to_local(band_right.global_position)
