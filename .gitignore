@@ -4,6 +4,10 @@
 /build/
 build.zip
 /assets/organizers/
-*/*.png
-*/*.jpg
-*/*.jpeg
+*.png*
+*.jpg*
+*.jpeg*
+*.JPG*
+*.wav*
+*.mp4*
+*.mp3*

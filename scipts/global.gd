@@ -1,4 +1,4 @@
 extends Node
 
-@export var WIDTH: float = 300.0
-@export var HEIGHT: float = 100.0
+@export var WIDTH: float = 450.0
+@export var HEIGHT: float = 150.0

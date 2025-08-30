@@ -70,6 +70,8 @@ func shoot(origin: Vector2, direction: Vector2, ease: float) -> void:
 
 	angular_velocity = vel.length() / maxf(radius, 0.001) * 0.15
 	set_loaded(false)
+	
+	AudioManager.play_sfx("shoot_face")
 
 func _physics_process(delta: float) -> void:
 	# --- Adaptive sub-stepping: keep displacement per substep ~< radius*0.5
@@ -179,6 +181,8 @@ func _apply_wall_response(n: Vector2) -> void:
 	vel = n * v_n_after + t * v_t_after
 	var dv_t: float = v_t_after - v_t
 	angular_velocity += -dv_t / maxf(radius, 0.001)
+	
+	ive_hit_something()
 
 func _apply_peg_response_scaled(n: Vector2, friction_scale: float) -> void:
 	var t: Vector2 = Vector2(-n.y, n.x)
@@ -193,6 +197,13 @@ func _apply_peg_response_scaled(n: Vector2, friction_scale: float) -> void:
 
 	var dv_t: float = v_t_after - v_t
 	angular_velocity += -dv_t / maxf(radius, 0.001)
+	
+	ive_hit_something()
+
+func ive_hit_something():
+	if !vel.length() < 50:
+		AudioManager.play_sfx("hit_face")
+		
 
 # --- peg helpers ---
 func _mark_peg(peg: Node) -> void:

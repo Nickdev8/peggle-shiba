@@ -1,4 +1,5 @@
 extends Node2D
+@onready var ammoviewer: Node2D = $"../ammoviewer"
 
 @export var projectile_parent: Node = null
 
@@ -45,6 +46,7 @@ const POST_SHOT_DRAW_SECS := 0.15
 
 var ProjectileScene := preload("res://scenes/newprojectile.tscn")
 var _reloading: bool = false
+var ammo_index: int = 0
 
 var cursor_speed: float = 120.0
 var max_distance: float = 16.0
@@ -177,6 +179,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("shoot"):
+		var pull_len := (cursor_position - global_position).length()
+		if not _reloading and _loaded_projectile and pull_len >= touch_min_pull_px:
+			_shoot_loaded()
+		return
+	
+	
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
 			_mouse_hold = event.pressed
@@ -484,8 +493,18 @@ func _clamp_to_centered_view(p: Vector2) -> Vector2:
 		var half: Vector2 = Vector2(float(size.x) * 0.5, float(size.y) * 0.5)
 		return p.clamp(-half + Vector2.ONE, half - Vector2.ONE)
 	return Vector2.ZERO
+	
+var _spawn_pending: bool = false
+
 
 func _spawn_loaded_projectile() -> void:
+	if _loaded_projectile or _reloading or _spawn_pending:
+		return
+
+	_spawn_pending = true
+	await get_tree().process_frame
+	_spawn_pending = false
+
 	if _loaded_projectile or _reloading:
 		return
 
@@ -499,9 +518,20 @@ func _spawn_loaded_projectile() -> void:
 	if proj.has_method("set_loaded"):
 		proj.call("set_loaded", true)
 	proj.visible = true
+
+	proj.sprite.set_ammo_index(ammo_index)
+	print(ammo_index)
+
+	ammoviewer.load_next()
 	proj.show()
 
 	_loaded_projectile = proj
 
+
 func _on_button_pressed() -> void:
 	_shoot_loaded()
+
+
+func _on_ammoviewer_next_ammo_ready(ammo_index: int) -> void:
+	self.ammo_index = ammo_index
+	print(ammo_index)
