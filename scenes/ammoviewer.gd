@@ -1,18 +1,17 @@
 extends Node2D
 
-signal next_ammo_ready(ammo_index: int) # emit so another script can spawn the real projectile
+signal next_ammo_ready(ammo_index: int)
 
 @onready var spawnpoint: Node2D = $spawnpoint
-
 @export var preview_count: int = 5
 
 const ProjectileScene := preload("res://scenes/previewprojectile.tscn")
 
-# queue order mirrors visual order:
-#   queue[0] = TOP (newest), queue.back() = BOTTOM (next-to-fire)
+# queue[0] = TOP (newest), queue.back() = BOTTOM (next-to-fire)
 var preview_queue: Array[int] = []
 
 func _ready() -> void:
+	randomize() # one-time: make randi_range truly random each run
 	_init_preview()
 
 # ---------------------------
@@ -24,14 +23,15 @@ func _init_preview() -> void:
 		c.queue_free()
 	preview_queue.clear()
 
-	# Build so that the FIRST created ends at the BOTTOM.
-	# We insert each new element at the TOP (front), pushing older ones downward.
+	# 1) Build the data first (TOP->BOTTOM order in the array)
 	for i in range(preview_count):
-		var idx := randi_range(0, 5)
-		preview_queue.push_front(idx)      # put newest at TOP
-		_add_preview_proj(idx, true)
-		_layout_previews()
-		await get_tree().create_timer(0.01).timeout
+		preview_queue.push_back(randi_range(0, 5))
+
+	# 2) Now spawn visuals in the SAME order as the array (do NOT move to top)
+	for i in range(preview_queue.size()):
+		_add_preview_proj(preview_queue[i], false)
+
+	_layout_previews()
 
 func _layout_previews() -> void:
 	# child index i == queue index i
@@ -39,6 +39,8 @@ func _layout_previews() -> void:
 	var n := spawnpoint.get_child_count()
 	for i in range(n):
 		var child := spawnpoint.get_child(i)
+		# Position/animate each child here if you want, e.g.:
+		# child.position = Vector2(0, i * 24)
 
 func _add_preview_proj(ammo_index: int, insert_at_top: bool) -> Node2D:
 	var p := ProjectileScene.instantiate()
@@ -47,8 +49,9 @@ func _add_preview_proj(ammo_index: int, insert_at_top: bool) -> Node2D:
 		return null
 
 	spawnpoint.add_child(p)
+
 	if insert_at_top:
-		# make it the first child so others shift down
+		# Only used when adding a BRAND-NEW preview during gameplay
 		spawnpoint.move_child(p, 0)
 
 	_set_proj_index(p, ammo_index)
@@ -95,18 +98,14 @@ func load_next() -> void:
 # Helpers
 # ---------------------------
 func _set_proj_index(proj: Node, ammo_index: int) -> void:
-	print_debug(preview_queue)
 	if proj.sprite and proj.sprite.has_method("set_ammo_index"):
 		proj.sprite.call("set_ammo_index", ammo_index)
-		return
 
 func _make_preview_fall(node: Node) -> void:
-	# optional: disable collisions so it doesn't interfere
 	var collider := node.get_node_or_null("CollisionShape2D")
 	if collider and collider is CollisionShape2D:
 		(collider as CollisionShape2D).disabled = true
 
-	# auto-clean when off-screen
 	var v := VisibleOnScreenNotifier2D.new()
 	node.add_child(v)
 	v.connect("screen_exited", Callable(node, "queue_free"))

@@ -46,7 +46,6 @@ const POST_SHOT_DRAW_SECS := 0.15
 
 var ProjectileScene := preload("res://scenes/newprojectile.tscn")
 var _reloading: bool = false
-var ammo_index: int = 0
 
 var cursor_speed: float = 120.0
 var max_distance: float = 16.0
@@ -109,7 +108,9 @@ func _physics_process(delta: float) -> void:
 	var speed := cursor_speed
 	if Input.is_key_pressed(KEY_SHIFT):
 		speed *= 0.3
-	
+	if Input.is_key_pressed(KEY_CTRL):
+		speed *= 2
+		
 	if axis.length() > 1.0:
 		axis = axis.normalized()
 	if axis != Vector2.ZERO:
@@ -493,18 +494,8 @@ func _clamp_to_centered_view(p: Vector2) -> Vector2:
 		var half: Vector2 = Vector2(float(size.x) * 0.5, float(size.y) * 0.5)
 		return p.clamp(-half + Vector2.ONE, half - Vector2.ONE)
 	return Vector2.ZERO
-	
-var _spawn_pending: bool = false
-
 
 func _spawn_loaded_projectile() -> void:
-	if _loaded_projectile or _reloading or _spawn_pending:
-		return
-
-	_spawn_pending = true
-	await get_tree().process_frame
-	_spawn_pending = false
-
 	if _loaded_projectile or _reloading:
 		return
 
@@ -518,20 +509,11 @@ func _spawn_loaded_projectile() -> void:
 	if proj.has_method("set_loaded"):
 		proj.call("set_loaded", true)
 	proj.visible = true
-
-	proj.sprite.set_ammo_index(ammo_index)
-	print(ammo_index)
-
+	proj.sprite.set_ammo_index(ammoviewer.preview_queue[ammoviewer.preview_queue.size()-1])
 	ammoviewer.load_next()
 	proj.show()
 
 	_loaded_projectile = proj
 
-
 func _on_button_pressed() -> void:
 	_shoot_loaded()
-
-
-func _on_ammoviewer_next_ammo_ready(ammo_index: int) -> void:
-	self.ammo_index = ammo_index
-	print(ammo_index)
